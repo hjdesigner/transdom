@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Transdom Test Page</title>
+</head>
+<body>
+  <h1>Welcome to our website</h1>
+  <p>This is a simple paragraph used to test automatic translation.</p>
+  <button id="start-btn">Start Auto translate</button>
+  <button id="add-content-btn">Add Dynamic Content</button>
+
+  <script src="transdom.js"></script>
+  <script>
+    document.getElementById("start-btn").addEventListener("click", () => {
+      Transdom.startAutoTranslate();
+    });
+
+    document.getElementById("add-content-btn").addEventListener("click", () => {
+      const  p = document.createElement("p");
+      p.textContent = "This paragraph was added dynamically after the page loader."
+      document.body.appendChild(p)
+    })
+  </script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+services:
+  server:
+    build: ./server
+    ports:
+      - "8000:8000"
+    volumes:
+      - model_cache:/root/.cache/huggingface
+
+volumes:
+  model_cache:
