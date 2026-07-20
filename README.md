@@ -10,13 +10,35 @@ Transdom has two pieces:
 
 ### 1. Run the server
 
+**Option A — Docker (recommended):**
+
 ```bash
 docker compose up --build
 ```
 
-The server will be available at `http://localhost:8000`.
+**Option B — Local Python:**
 
-### 2. Add the client to your page
+```bash
+cd server
+python -m venv venv
+source venv/Scripts/activate   # Windows (Git Bash)
+# source venv/bin/activate     # macOS/Linux
+pip install -r requirements.txt
+uvicorn main:app --reload --port 8000
+```
+
+Either way, the server will be available at `http://localhost:8000`. Interactive docs (test it without writing any code) live at `http://localhost:8000/docs`.
+
+### 2. Serve the client library and try it
+
+```bash
+cd client
+python -m http.server 5500
+```
+
+Open `http://localhost:5500/test.html` in your browser.
+
+### 3. Add Transdom to your own page
 
 ```html
 <script src="transdom.js"></script>
@@ -32,6 +54,28 @@ The server will be available at `http://localhost:8000`.
 | en     | pt     |
 | en     | es     |
 | en     | de     |
+
+Add more pairs by editing `LANGUAGE_MODELS` in `server/main.py`.
+
+## How it works
+
+1. `transdom.js` scans the page's DOM for text nodes (skipping `<script>`, `<style>`, etc.) and watches for new content added later via `MutationObserver`.
+2. It sends batches of text to the server's `/translate/batch` endpoint.
+3. The server runs the appropriate open-source translation model (from Hugging Face) and returns the translated text.
+4. The client swaps the translated text back into the page in place, without touching HTML structure or event listeners.
+
+## Memory management
+
+Translation models are loaded into RAM on first use per language pair, and cached in-memory results avoid re-translating the same text twice. Both caches are bounded using an **LRU (Least Recently Used) eviction policy** — once a limit is reached, the least recently used entry is dropped to make room for new ones, so memory usage stays predictable instead of growing forever.
+
+These limits are configurable in `server/main.py`:
+
+```python
+MAX_LOADED_MODELS = 3           # max translation models kept in RAM at once
+MAX_TRANSLATION_CACHE_SIZE = 5000  # max cached translated strings
+```
+
+Tune `MAX_LOADED_MODELS` based on available RAM — each model uses roughly 300MB–2GB depending on the language pair.
 
 ## License
 

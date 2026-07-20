@@ -1,13 +1,11 @@
-from fastapi import FastAPI, HTTPException, HTTPException
+from collections import OrderedDict
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 
 app = FastAPI(title="Transdom Translation Server")
 
-# Allow any website to call this API from the browser.
-# In a production self-hosted setuo, you'd usually restrict this
-# to especific domains instead of "*"
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -15,23 +13,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Registry of supported language pairs.
-# "target_tag" is only need for multilingual models like en-pt,
-# which require a >>xxx<< prefix to pick the target variant.
-
 LANGUAGE_MODELS = {
     ("en", "pt"): {"model_name": "Helsinki-NLP/opus-mt-tc-big-en-pt", "target_tag": "por"},
     ("en", "es"): {"model_name": "Helsinki-NLP/opus-mt-en-es", "target_tag": None},
     ("en", "de"): {"model_name": "Helsinki-NLP/opus-mt-en-de", "target_tag": None},
 }
 
-# In-memory cache: keeps already-loaded models so we don't reload them
-# on every request. Key = (source_lang, target_lang), valure = (tokenizer, model  )
-loaded_models = dict = {}
+# Maximum number of models kept in memory at once, and maximum number
+# of cached translations. Tune these based on how much RAM the machine
+# running this server actually has.
+MAX_LOADED_MODELS = 3
+MAX_TRANSLATION_CACHE_SIZE = 5000
 
-# translation cache: key = (source_lang, target_lang, text), value = translation text.
-# this avoids re-running the model for text we've already translated before.
-translation_cache = dict = {}
+# OrderedDict lets us move an item to the end on access (marking it as
+# "recently used") and pop the first item (the least recently used one)
+# when we're over the limit.
+loaded_models: OrderedDict = OrderedDict()
+translation_cache: OrderedDict = OrderedDict()
+
 
 def get_model(source_lang: str, target_lang: str):
     pair_key = (source_lang, target_lang)
@@ -41,21 +40,34 @@ def get_model(source_lang: str, target_lang: str):
             status_code=400,
             detail=f"Language pair '{source_lang}-{target_lang}' is not supported.",
         )
-    
-    if pair_key not in loaded_models:
-        model_name = LANGUAGE_MODELS[pair_key]["model_name"]
-        tokenizer = AutoTokenizer.from_pretrained(model_name)
-        model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
-        loaded_models[pair_key] = (tokenizer, model)
+
+    if pair_key in loaded_models:
+        # Accessed again — move it to the end so it's not seen as "old".
+        loaded_models.move_to_end(pair_key)
+        return loaded_models[pair_key]
+
+    model_name = LANGUAGE_MODELS[pair_key]["model_name"]
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
+    loaded_models[pair_key] = (tokenizer, model)
+
+    if len(loaded_models) > MAX_LOADED_MODELS:
+        # popitem(last=False) removes the FIRST item — the one that has
+        # gone the longest without being used, since every access moves
+        # items to the end.
+        oldest_key, _ = loaded_models.popitem(last=False)
+        print(f"[transdom] Evicting model for {oldest_key} to free memory")
 
     return loaded_models[pair_key]
+
 
 def translate_text(text: str, source_lang: str, target_lang: str) -> str:
     cache_key = (source_lang, target_lang, text)
 
     if cache_key in translation_cache:
+        translation_cache.move_to_end(cache_key)
         return translation_cache[cache_key]
-    
+
     tokenizer, model = get_model(source_lang, target_lang)
     target_tag = LANGUAGE_MODELS[(source_lang, target_lang)]["target_tag"]
     tagged_text = f">>{target_tag}<< {text}" if target_tag else text
@@ -65,6 +77,9 @@ def translate_text(text: str, source_lang: str, target_lang: str) -> str:
     translation = tokenizer.decode(outputs[0], skip_special_tokens=True)
 
     translation_cache[cache_key] = translation
+    if len(translation_cache) > MAX_TRANSLATION_CACHE_SIZE:
+        translation_cache.popitem(last=False)
+
     return translation
 
 
@@ -73,14 +88,9 @@ class TranslateRequest(BaseModel):
     source_lang: str
     target_lang: str
 
+
 class TranslateResponse(BaseModel):
     translation: str
-
-
-@app.post("/translate", response_model=TranslateResponse)
-def translate(request: TranslateRequest):
-    translation = translate_text(request.text, request.source_lang, request.target_lang)
-    return TranslateResponse(translation=translation)
 
 
 class TranslateBatchRequest(BaseModel):
@@ -88,9 +98,16 @@ class TranslateBatchRequest(BaseModel):
     source_lang: str
     target_lang: str
 
+
 class TranslateBatchResponse(BaseModel):
     translations: list[str]
-    
+
+
+@app.post("/translate", response_model=TranslateResponse)
+def translate(request: TranslateRequest):
+    translation = translate_text(request.text, request.source_lang, request.target_lang)
+    return TranslateResponse(translation=translation)
+
 
 @app.post("/translate/batch", response_model=TranslateBatchResponse)
 def translate_batch(request: TranslateBatchRequest):

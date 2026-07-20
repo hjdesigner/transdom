@@ -6,7 +6,7 @@
 const TRANSDOM_CONFIG = {
   apiUrl: "http://localhost:8000/translate/batch",
   sourceLang: "en",
-  targetLang: "pt",
+  targetLang: "es",
 }
 
 // Tags whose text content should never be sent for translation
