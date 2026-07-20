@@ -3,6 +3,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+from sentence_transformers import SentenceTransformer, util
 
 app = FastAPI(title="Transdom Translation Server")
 
@@ -25,11 +26,20 @@ LANGUAGE_MODELS = {
 MAX_LOADED_MODELS = 3
 MAX_TRANSLATION_CACHE_SIZE = 5000
 
+# Loaded once at startup. This is a small, fast model dedicated to tuning text
+# into vectors - a different task from translation (encoder-only
+# not encoder-decoder).
+embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+
+# How similar two texts need to be (0 to 1) to reuse a cached translation.
+SIMILARITY_THRESHOLD = 0.92
+
 # OrderedDict lets us move an item to the end on access (marking it as
 # "recently used") and pop the first item (the least recently used one)
 # when we're over the limit.
 loaded_models: OrderedDict = OrderedDict()
 translation_cache: OrderedDict = OrderedDict()
+semantic_cache: OrderedDict = OrderedDict()
 
 
 def get_model(source_lang: str, target_lang: str):
@@ -60,14 +70,41 @@ def get_model(source_lang: str, target_lang: str):
 
     return loaded_models[pair_key]
 
+def find_similar_translation(source_lang: str, target_lang: str, embedding):
+    best_match = None
+    best_score = 0.0
+
+    for (cached_lang_pair, _), entry in list(semantic_cache.items()):
+        if cached_lang_pair != (source_lang, target_lang):
+            continue
+    
+        score = util.cos_sim(embedding, entry["embedding"]).item()
+        if score > best_score:
+            best_score = score
+            best_match = entry["translation"]
+
+    print(f"[transdom] Best semantic similarity found: {best_score:.4f}")
+    
+    if best_score >= SIMILARITY_THRESHOLD:
+        return best_match
+    return None
 
 def translate_text(text: str, source_lang: str, target_lang: str) -> str:
     cache_key = (source_lang, target_lang, text)
 
+    # 1. Exact math - fastest, no computation needed
     if cache_key in translation_cache:
         translation_cache.move_to_end(cache_key)
         return translation_cache[cache_key]
-
+    
+    # 2. Semantic match - text differs, but might mean the same thing.
+    embedding = embedding_model.encode(text, convert_to_tensor=True)
+    similar_translation = find_similar_translation(source_lang, target_lang, embedding)
+    if similar_translation is not None:
+        translation_cache[cache_key] = similar_translation
+        return similar_translation
+    
+    # 3. No mattch at all - run the actual translation model.
     tokenizer, model = get_model(source_lang, target_lang)
     target_tag = LANGUAGE_MODELS[(source_lang, target_lang)]["target_tag"]
     tagged_text = f">>{target_tag}<< {text}" if target_tag else text
@@ -79,6 +116,11 @@ def translate_text(text: str, source_lang: str, target_lang: str) -> str:
     translation_cache[cache_key] = translation
     if len(translation_cache) > MAX_TRANSLATION_CACHE_SIZE:
         translation_cache.popitem(last=False)
+
+    semantic_key = ((source_lang, target_lang), text)
+    semantic_cache[semantic_key] = {"embedding": embedding, "translation": translation}
+    if len(semantic_cache) > MAX_TRANSLATION_CACHE_SIZE:
+        semantic_cache.popitem(last=False)
 
     return translation
 
