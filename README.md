@@ -104,6 +104,15 @@ don't actually mean the same thing). Higher values are safer but closer to
 exact-match caching. `0.92` was chosen by testing real examples rather than
 picked arbitrarily — tune it based on the kind of text your site uses.
 
+## Translation engine
+
+Translation models run on **CTranslate2** with **int8 quantization**, instead
+of plain PyTorch. This was measured (not assumed) to give a ~6x speedup and
+roughly halve the model's disk/memory footprint, with no observable quality
+difference on test sentences. Converted models are cached in `ct2_models/`
+and generated automatically on first use per language pair — no manual setup
+required.
+
 ## License
 
 MIT — see [LICENSE](LICENSE) for details.
