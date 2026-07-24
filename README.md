@@ -93,13 +93,19 @@ whatever the AI model generates.
 }
 ```
 
-- **do_not_translate** — an exact-match list of terms (case-sensitive) that are returned unchanged, regardless of source/target language.
-- **custom_translations** — per language-pair overrides. If a text exactly matches a key here, the mapped value is used instead of running the translation model.
+- **do_not_translate** — terms (case-sensitive, whole-word match) that are
+  never translated, whether they're the entire text or appear inside a
+  larger sentence.
+- **custom_translations** — per language-pair overrides for specific terms,
+  applied the same way: whole text or inside a sentence.
 
-Glossary rules take priority over caching and the AI model — they're checked
-first on every request, so updates to `glossary.json` take effect immediately
-without needing to clear any cache. If `glossary.json` doesn't exist, the
-server runs normally with no glossary rules.
+Glossary rules take priority over caching and the AI model. When a term
+appears inside a larger sentence, it's temporarily replaced with a
+name-like placeholder before translation (name-like tokens survive
+translation far more reliably than symbols or raw variable names — this
+was verified empirically, see the project's development history) and
+restored afterward. If `glossary.json` doesn't exist, the server runs
+normally with no glossary rules.
 
 ## Memory management
 
