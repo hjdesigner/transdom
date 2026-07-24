@@ -1,101 +1,159 @@
 // Transfom client library
-// Scans the current page for translatable text, sends it to a Transdom
-// server, and replaces the text in place - without touching HTML structure
-// or breaking event listeners attached to elements.
-
-const TRANSDOM_CONFIG = {
-  apiUrl: "http://localhost:8000/translate/batch",
-  sourceLang: "en",
-  targetLang: "es",
-}
+// A class-based translation client that emits lifecycle events
+// (start/success/error), so consuming code (vanilla JS, React, etc.)
+// can react to what's happening — e.g. show a loading spinner.
 
 // Tags whose text content should never be sent for translation
-const IGNORE_TAGS = new Set(["SCRIPT", "STYLE", "NOSCRIPT", "CODE", "PRE", "TEXTAREA"]);
+const IGNORED_TAGS = new Set(["SCRIPT", "STYLE", "NOSCRIPT", "CODE", "PRE", "TEXTAREA"]);
 
-// Tracks witch text node have aldeady been translated, so we never
-// send the same node the server twice - and so a re-scan triggered
-// by MutationObserver only priocesses genuinely new content.
-const translatedNodes = new WeakSet();
 
-function collectTextNodes(root) {
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-    acceptNode(node) {
-      const parentTag = node.parentElement ? node.parentElement.tagName : "";
-      if (IGNORE_TAGS.has(parentTag)) return NodeFilter.FILTER_REJECT;
-      if (!node.textContent.trim()) return NodeFilter.FILTER_REJECT;
-      if (translatedNodes.has(node)) return NodeFilter.FILTER_REJECT;
-      return NodeFilter.FILTER_ACCEPT;
-     },
-  });
+class Transdom extends EventTarget {
+  constructor(config = {}) {
+    super();
 
-  const nodes = [];
-  let current = walker.nextNode();
-  while (current) {
-    nodes.push(current);
-    current = walker.nextNode();
-  }
-  return nodes;
-}
+    this.config = {
+      apiUrl: "http://localhost:8000/translate/batch",
+      sourceLang: "en",
+      targetLang: "es",
+      maxConsecutiveFailures: 3,
+      ...config,    
+    };
 
-// Calls the Transdom server's batch endpoint and returns the translations.
-// in the same order as the texts sent in
-async function translateTexts(texts, sourceLang, targetLang) {
-  const response = await fetch(TRANSDOM_CONFIG.apiUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ texts, source_lang: sourceLang, target_lang: targetLang }),
-  });
+    // Instance-level state, not global - each Transdom instance tracks
+    // its own translated nodes and its own MutationOserver.
+    this. translatedNodes = new WeakSet();
+    this.observe = null;
+    this.mutationTimeout = null;
 
-  if (!response.ok) {
-    throw new Error(`Transdom server error: ${response.status}`);
+    // Circuit breaker state: trancks repeated failures so we can stop
+    // hammerung a server that's clearly down, instead of retrying forever.
+    this.consecutiveFailures = 0;
+    this.circuitOpen = false;
+
+    // Prevents overlapping translatePage() calls from running concurrently —
+    // without this, rapid DOM mutations can fire multiple simultaneous
+    // translation requests, each unaware of the others' failures.
+    this.isTranslating = false;
   }
 
-  const data = await response.json();
-  return data.translations;
+  collectTextNodes(root) {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode: (node) => {
+        const parentTag = node.parentElement ? node.parentElement.tagName : "";
+        if (IGNORED_TAGS.has(parentTag)) return NodeFilter.FILTER_REJECT;
+        if (!node.textContent.trim()) return NodeFilter.FILTER_REJECT;
+        if (this.translatedNodes.has(node)) return NodeFilter.FILTER_REJECT;
+        return NodeFilter.FILTER_ACCEPT;
+      },
+    });
+
+    const nodes = [];
+    let current = walker.nextNode();
+    while (current) {
+      nodes.push(current);
+      current = walker.nextNode();
+    }
+    return nodes;
+  }
+
+  // Calls the Transdom server's batch endpoint and returns the translations.
+  // in the same order as the texts sent in
+  async translateTexts(texts) {
+    const response = await fetch(this.config.apiUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        texts,
+        source_lang: this.config.sourceLang,
+        target_lang: this.config.targetLang,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Transdom server error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.translations;
+  } 
+
+  // Main entry point: find all text on the page, translates it, and swaps it in.
+  async translatePage() {
+    if (this.circuitOpen || this.isTranslating) return;
+
+    this.isTranslating = true;
+
+    try {
+      const textNodes = this.collectTextNodes(document.body);
+      const originalTexts = textNodes.map((node) => node.textContent.trim());
+
+      if (originalTexts.length === 0) return;
+
+      this.dispatchEvent(new CustomEvent("translate:start", {
+        detail: { count: originalTexts.length },
+      }));
+
+      try {
+        const translations = await this.translateTexts(originalTexts);
+
+        textNodes.forEach((node, index) => {
+          node.textContent = translations[index];
+          this.translatedNodes.add(node);
+        });
+
+        this.consecutiveFailures = 0;
+
+        this.dispatchEvent(new CustomEvent("translate:success", {
+          detail: { count: originalTexts.length },
+        }));
+      } catch (error) {
+        this.consecutiveFailures += 1;
+
+        this.dispatchEvent(new CustomEvent("translate:error", {
+          detail: { error, consecutiveFailures: this.consecutiveFailures },
+        }));
+
+        if (this.consecutiveFailures >= this.config.maxConsecutiveFailures) {
+          this.circuitOpen = true;
+          this.stopAutoTranslate();
+
+          this.dispatchEvent(new CustomEvent("translate:circuit-open", {
+            detail: { consecutiveFailures: this.consecutiveFailures },
+          }));
+        }
+      }
+    } finally {
+      // Always runs, whether translation succeeded, failed, or an
+      // unexpected error was thrown — the lock must never get stuck "on".
+      this.isTranslating = false;
+    }
+  }
+
+  startAutoTranslate() {
+    this.translatePage();
+
+    this.observer = new MutationObserver(() => {
+      clearTimeout(this.mutationTimeout);
+      this.mutationTimeout = setTimeout(() => this.translatePage(), 300);
+    });
+
+    this.observer.observe(document.body, { childList: true, subtree: true });
+  }
+
+  stopAutoTranslate() {
+    if (this.observer) {
+      this.observer.disconnect();
+      this.observer = null;
+    }
+    clearTimeout(this.mutationTimeout);
+  }
+
+  resetCircuit() {
+    this.consecutiveFailures = 0;
+    this.circuitOpen = false;
+  }
 }
 
-
-// Main entry point: find all text on the page, translates it, and swaps it in.
-async function translatePage() {
-  const textNodes = collectTextNodes(document.body);
-  const oridinalTexts = textNodes.map(node => node.textContent.trim());
-
-  if (oridinalTexts.length === 0) return;
-
-  const translations = await translateTexts(
-    oridinalTexts,
-    TRANSDOM_CONFIG.sourceLang,
-    TRANSDOM_CONFIG.targetLang
-  );
-
-  textNodes.forEach((node, index) => {
-    node.textContent = translations[index];
-    translatedNodes.add(node);
-  });
-}
-
-let mutationTimeout = null;
-
-// Starts translating the page, then keeps watching for new content
-// added later (e.g. by framework re-rendering, or content loaded)
-// asynchronously and translates it automatically.
-function startAutoTranslate() {
-  translatePage();
-
-  const observer = new MutationObserver(() => {
-    // A single DOM update can trigger many mutation events at once
-    // (e.g. a whole component re-rendering adds several nodes).
-    // we wait a bit and react only onde, instead of per mutation.
-    clearTimeout(mutationTimeout);
-    mutationTimeout = setTimeout(translatePage, 300);
-  });
-
-  observer.observe(document.body, { childList: true, subtree: true });
-
-  return observer;
-}
-
-
-window.Transdom = { translatePage, startAutoTranslate, config: TRANSDOM_CONFIG };
+window.Transdom = Transdom;

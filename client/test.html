@@ -7,20 +7,48 @@
 <body>
   <h1>Welcome to our website</h1>
   <p>This is a simple paragraph used to test automatic translation.</p>
-  <button id="start-btn">Start Auto translate</button>
+
+  <button id="start-btn">Start Auto Translate</button>
   <button id="add-content-btn">Add Dynamic Content</button>
+  <p id="status"></p>
 
   <script src="transdom.js"></script>
   <script>
+    const transdom = new Transdom({
+      apiUrl: "http://localhost:8000/translate/batch",
+      sourceLang: "en",
+      targetLang: "pt",
+    });
+
+    const statusEl = document.getElementById("status");
+
+    transdom.addEventListener("translate:start", (event) => {
+      statusEl.textContent = `Translating ${event.detail.count} text(s)...`;
+    });
+
+    transdom.addEventListener("translate:success", () => {
+      statusEl.textContent = "Translation complete.";
+    });
+
+    transdom.addEventListener("translate:error", (event) => {
+      statusEl.textContent = `Error: ${event.detail.error.message}`;
+    });
+
     document.getElementById("start-btn").addEventListener("click", () => {
-      Transdom.startAutoTranslate();
+      transdom.startAutoTranslate();
+      transdom.resetCircuit();
+      transdom.startAutoTranslate();
     });
 
     document.getElementById("add-content-btn").addEventListener("click", () => {
-      const  p = document.createElement("p");
-      p.textContent = "This paragraph was added dynamically after the page loader."
-      document.body.appendChild(p)
-    })
+      const p = document.createElement("p");
+      p.textContent = "This paragraph was added dynamically after the page loaded.";
+      document.body.appendChild(p);
+    });
+
+    transdom.addEventListener("translate:circuit-open", () => {
+      statusEl.textContent = "Server unavailable after multiple attempts. Click 'Start Auto Translate' to retry.";
+    });
   </script>
 </body>
 </html>

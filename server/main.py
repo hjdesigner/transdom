@@ -1,21 +1,45 @@
 import os
 from collections import OrderedDict
+from typing import Annotated
+
 import ctranslate2
+from dotenv import load_dotenv
 from ctranslate2.converters import TransformersConverter
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+from slowapi.util import get_remote_address
 from transformers import AutoTokenizer
 from sentence_transformers import SentenceTransformer, util
+
+# Load variables from .env into the environment. Falls back to safe
+# default if a variable isn't set, so the server still runs without
+# a .env file (useful for quick local testing).
+load_dotenv()
+
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:5000").split(",")
+RATE_LIMIT = os.getenv("RATE_LIMIT", "30/minute")
+MAX_TEXTS_PER_BATCH = int(os.getenv("MAX_TEXTS_PER_BATCH", "100"))
+MAX_TEXT_LENGTH = int(os.getenv("MAX_TEXT_LENGTH", "2000"))
 
 app = FastAPI(title="Transdom Translation Server")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Rate limiting: idetifies client by IP address and rejects requests
+# beyond the configured limit with an HTTP 429 response.
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 LANGUAGE_MODELS = {
     ("en", "pt"): {"model_name": "Helsinki-NLP/opus-mt-tc-big-en-pt", "target_tag": "por"},
@@ -127,9 +151,14 @@ def translate_text(text: str, source_lang: str, target_lang: str) -> str:
 
     return translation
 
+# Field(max_length=...) on plain str constrains character count.
+# On a list, max_length constrauns the number of items. Combining both,
+# via Annotated on the list's inner type, constrains each item AND the
+# list size - rejecting oversized payloads before any code even runs.
+BoundedText = Annotated[str, Field(max_length=MAX_TEXT_LENGTH)]
 
 class TranslateRequest(BaseModel):
-    text: str
+    text: BoundedText
     source_lang: str
     target_lang: str
 
@@ -139,7 +168,7 @@ class TranslateResponse(BaseModel):
 
 
 class TranslateBatchRequest(BaseModel):
-    texts: list[str]
+    texts: Annotated[list[BoundedText],  Field(max_length=MAX_TEXTS_PER_BATCH)]
     source_lang: str
     target_lang: str
 
@@ -149,15 +178,17 @@ class TranslateBatchResponse(BaseModel):
 
 
 @app.post("/translate", response_model=TranslateResponse)
-def translate(request: TranslateRequest):
-    translation = translate_text(request.text, request.source_lang, request.target_lang)
+@limiter.limit(RATE_LIMIT)
+def translate(request: Request, body: TranslateRequest):
+    translation = translate_text(body.text, body.source_lang, body.target_lang)
     return TranslateResponse(translation=translation)
 
 
 @app.post("/translate/batch", response_model=TranslateBatchResponse)
-def translate_batch(request: TranslateBatchRequest):
+@limiter.limit(RATE_LIMIT)
+def translate_batch(request: Request, body: TranslateBatchRequest):
     translations = [
-        translate_text(text, request.source_lang, request.target_lang)
-        for text in request.texts
+        translate_text(text, body.source_lang, body.target_lang)
+        for text in body.texts
     ]
     return TranslateBatchResponse(translations=translations)

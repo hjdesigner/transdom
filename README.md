@@ -64,6 +64,16 @@ Add more pairs by editing `LANGUAGE_MODELS` in `server/main.py`.
 3. The server runs the appropriate open-source translation model (from Hugging Face) and returns the translated text.
 4. The client swaps the translated text back into the page in place, without touching HTML structure or event listeners.
 
+## Configuration
+
+Copy `.env.example` to `.env` (inside `server/`) and adjust as needed:
+
+- **ALLOWED_ORIGINS** — comma-separated list of domains allowed to call this API from a browser (CORS). Restrict this to your own site's domain(s) in production; the default only allows `localhost:5500`, used by the included test page.
+- **RATE_LIMIT** — max requests per IP address (e.g. `30/minute`, `100/hour`), enforced with [slowapi](https://github.com/laurentS/slowapi).
+- **MAX_TEXTS_PER_BATCH** / **MAX_TEXT_LENGTH** — reject oversized requests (too many texts, or texts that are too long) before they reach the translation engine, protecting the server from abuse or accidental misuse.
+
+If no `.env` file is present, the server falls back to safe defaults, so it still runs out of the box for local testing.
+
 ## Memory management
 
 Translation models are loaded into RAM on first use per language pair, and cached in-memory results avoid re-translating the same text twice. Both caches are bounded using an **LRU (Least Recently Used) eviction policy** — once a limit is reached, the least recently used entry is dropped to make room for new ones, so memory usage stays predictable instead of growing forever.
