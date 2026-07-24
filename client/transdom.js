@@ -16,6 +16,7 @@ class Transdom extends EventTarget {
       sourceLang: "en",
       targetLang: "es",
       maxConsecutiveFailures: 3,
+      root: document.body,
       ...config,    
     };
 
@@ -86,7 +87,7 @@ class Transdom extends EventTarget {
     this.isTranslating = true;
 
     try {
-      const textNodes = this.collectTextNodes(document.body);
+      const textNodes = this.collectTextNodes(this.config.root);
       const originalTexts = textNodes.map((node) => node.textContent.trim());
 
       if (originalTexts.length === 0) return;
@@ -139,7 +140,7 @@ class Transdom extends EventTarget {
       this.mutationTimeout = setTimeout(() => this.translatePage(), 300);
     });
 
-    this.observer.observe(document.body, { childList: true, subtree: true });
+    this.observer.observe(this.config.root, { childList: true, subtree: true });
   }
 
   stopAutoTranslate() {
@@ -156,4 +157,11 @@ class Transdom extends EventTarget {
   }
 }
 
-window.Transdom = Transdom;
+// Dual compatibility: works as a plain <script> tag (window.Transdom)
+// And as an ES module (import { Transdom } from "./transdom.js"),
+// without needing two separate files or a build setp.
+if (typeof window != "undefined") {
+  window.Transdom = Transdom;
+}
+
+export { Transdom }
