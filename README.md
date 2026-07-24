@@ -74,6 +74,33 @@ Copy `.env.example` to `.env` (inside `server/`) and adjust as needed:
 
 If no `.env` file is present, the server falls back to safe defaults, so it still runs out of the box for local testing.
 
+## Glossary
+
+Create a `glossary.json` file inside `server/` to override automatic
+translation for specific terms — useful for brand names, technical terms,
+or UI strings where you want an exact, consistent translation instead of
+whatever the AI model generates.
+
+```json
+{
+  "do_not_translate": ["Transdom", "GitHub", "iPhone"],
+  "custom_translations": {
+    "en-pt": {
+      "Login": "Entrar",
+      "Sign up": "Criar conta"
+    }
+  }
+}
+```
+
+- **do_not_translate** — an exact-match list of terms (case-sensitive) that are returned unchanged, regardless of source/target language.
+- **custom_translations** — per language-pair overrides. If a text exactly matches a key here, the mapped value is used instead of running the translation model.
+
+Glossary rules take priority over caching and the AI model — they're checked
+first on every request, so updates to `glossary.json` take effect immediately
+without needing to clear any cache. If `glossary.json` doesn't exist, the
+server runs normally with no glossary rules.
+
 ## Memory management
 
 Translation models are loaded into RAM on first use per language pair, and cached in-memory results avoid re-translating the same text twice. Both caches are bounded using an **LRU (Least Recently Used) eviction policy** — once a limit is reached, the least recently used entry is dropped to make room for new ones, so memory usage stays predictable instead of growing forever.

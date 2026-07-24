@@ -1,0 +1,16 @@
+{
+  "do_not_translate": [
+    "Transdom",
+    "Github",
+    "iPhone"
+  ],
+  "custom_translations": {
+    "en-pt": {
+      "Login": "Entrar",
+      "Sign up": "Criar conta"
+    },
+    "en-es": {
+      "Login": "Iniciar sesión"
+    }
+  }
+}

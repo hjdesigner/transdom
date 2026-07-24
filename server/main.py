@@ -1,3 +1,4 @@
+import json
 import os
 from collections import OrderedDict
 from typing import Annotated
@@ -47,6 +48,8 @@ LANGUAGE_MODELS = {
     ("en", "de"): {"model_name": "Helsinki-NLP/opus-mt-en-de", "target_tag": None},
 }
 
+GLOSSARY_FILE = "glossary.json"
+
 # Where converted CTranslate2 models are cached on disk, so conversion
 # only happens once per language pair, not on every server restart.
 CT2_MODELS_DIR = "ct2_models"
@@ -61,6 +64,14 @@ loaded_models: OrderedDict = OrderedDict()
 translation_cache: OrderedDict = OrderedDict()
 semantic_cache: OrderedDict = OrderedDict()
 
+def load_glossary():
+    if not os.path.isfile(GLOSSARY_FILE):
+        return {"do_not_translate": [], "custom_translations": {}}
+
+    with open(GLOSSARY_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+glossary = load_glossary()
 
 def ensure_ct2_model(model_name: str, ct2_dir: str):
     if os.path.isdir(ct2_dir):
@@ -117,8 +128,30 @@ def find_similar_translation(source_lang: str, target_lang: str, embedding):
         return best_match
     return None
 
+def check_glossary(text: str, source_lang: str, target_lang: str):
+    """Returns a forced translation if the glossary has a rule for this
+    exact text, or None if the normal translation flow should proceed"""
+
+    stripped = text.strip()
+
+    if  stripped in glossary["do_not_translate"]:
+        return stripped
+
+    pair_key = f"{source_lang}-{target_lang}"
+    pair_glossary = glossary["custom_translations"].get(pair_key, {})
+    if stripped in pair_glossary:
+        return pair_glossary[stripped]
+
+    return None
 
 def translate_text(text: str, source_lang: str, target_lang: str) -> str:
+    # Glossary rules are explicit, user-configured overrides - they take
+    # priority over any cache or model output, since the site owner has
+    # deliberately decided this exact text should never go through the AI.
+    glossary_match = check_glossary(text, source_lang, target_lang)
+    if glossary_match is not None:
+        return glossary_match
+    
     cache_key = (source_lang, target_lang, text)
 
     if cache_key in translation_cache:
