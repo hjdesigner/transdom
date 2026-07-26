@@ -40,11 +40,60 @@ Open `http://localhost:5500/test.html` in your browser.
 
 ### 3. Add Transdom to your own page
 
-```html
-<script src="transdom.js"></script>
-<script>
-  Transdom.startAutoTranslate();
-</script>
+```bash
+npm install transdom
+```
+
+```js
+import { Transdom } from "transdom";
+
+const transdom = new Transdom({
+  apiUrl: "http://your-server:8000/translate/batch",
+  sourceLang: "en",
+  targetLang: "pt",
+});
+
+transdom.startAutoTranslate();
+```
+
+For React:
+```js
+import { useTransdom } from "transdom/react";
+
+function App() {
+  const contentRef = useRef(null);
+
+  const { status, error, translate, stop } = useTransdom(
+    {
+      apiUrl: "http://localhost:8000/translate/batch",
+      sourceLang: "en",
+      targetLang: "pt",
+    },
+    contentRef
+  );
+
+  return (
+    <div>
+      {/* Only this block is scanned/watched by Transdom */}
+      <div ref={contentRef}>
+        <h1>Welcome to our website</h1>
+        <p>This is a simple paragraph used to test automatic translation.</p>
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 16 }}>
+        {/* Everything below lives OUTSIDE the translatable area,
+            so Transdom never sees (or reacts to) its own status UI */}
+        <button onClick={translate} disabled={status === "loading"}>
+          {status === "loading" ? "Translating..." : "Translate Page"}
+        </button>
+        <button onClick={stop}>Stop</button>
+      </div>
+
+      {status === "error" && <p style={{ color: "red" }}>Error: {error?.message}</p>}
+      {status === "success" && <p style={{ color: "green" }}>Translated!</p>}
+    </div>
+  );
+}
 ```
 
 ## Supported languages

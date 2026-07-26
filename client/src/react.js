@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Transdom } from "../../transdom.js";
+import { Transdom } from "./index.js";
 
 export function useTransdom(config, rootRef) {
   const instanceRef = useRef(null);
@@ -9,7 +9,7 @@ export function useTransdom(config, rootRef) {
   useEffect(() => {
     const transdom = new Transdom({
       ...config,
-      root: rootRef.current || document.body,
+      root: rootRef?.current || document.body,
     });
     instanceRef.current = transdom;
 

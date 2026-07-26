@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { useTransdom } from "./useTransdom";
+import { useTransdom } from "transdom/react";
 
 function App() {
   const contentRef = useRef(null);
