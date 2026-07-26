@@ -279,3 +279,7 @@ def translate_batch(request: Request, body: TranslateBatchRequest):
         for text in body.texts
     ]
     return TranslateBatchResponse(translations=translations)
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}
