@@ -104,7 +104,27 @@ function App() {
 | en     | es     |
 | en     | de     |
 
-Add more pairs by editing `LANGUAGE_MODELS` in `server/main.py`.
+### Adding a new language pair
+
+1. Find the model for your language pair on the
+   [Helsinki-NLP OPUS-MT models page](https://huggingface.co/Helsinki-NLP).
+   Search for `opus-mt-{source}-{target}` (e.g. `opus-mt-en-ja` for
+   English → Japanese). Not every pair exists — check the model actually
+   loads before relying on it.
+2. Open the model's page and check its README for a "language codes" or
+   "valid target labels" section. Some models (usually named `tc-big` or
+   covering multiple related languages) require a `>>xxx<<` tag prefix
+   to pick the exact target — like `Helsinki-NLP/opus-mt-tc-big-en-pt`
+   does with `>>por<<`/`>>pob<<`. Most bilingual models (`opus-mt-en-es`,
+   for example) don't need one — use `null`/`None` in that case.
+3. Add an entry to `LANGUAGE_MODELS` in `server/main.py`:
+
+```python
+("en", "ja"): {"model_name": "Helsinki-NLP/opus-mt-en-ja", "target_tag": None},
+```
+
+4. Restart the server. The model downloads and converts to CTranslate2
+   automatically the first time that pair is used — no other setup needed.
 
 ## How it works
 
