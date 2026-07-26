@@ -1,0 +1,121 @@
+:root {
+  --bg: #0f1115;
+  --surface: #171a21;
+  --text: #e7e9ee;
+  --muted: #9aa1ac;
+  --accent: #5b8cff;
+  --radius: 10px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.hero {
+  text-align: center;
+  padding: 96px 24px 64px;
+}
+
+.hero h1 {
+  font-size: 3rem;
+  margin: 0 0 8px;
+}
+
+.tagline {
+  color: var(--muted);
+  font-size: 1.2rem;
+  max-width: 560px;
+  margin: 0 auto 32px;
+}
+
+.cta-group { display: flex; gap: 12px; justify-content: center; }
+
+.button {
+  padding: 12px 24px;
+  border-radius: var(--radius);
+  text-decoration: none;
+  color: var(--text);
+  border: 1px solid #2a2f3a;
+  font-weight: 600;
+}
+
+.button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.features {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 48px 24px;
+}
+
+.feature h3 { color: var(--accent); }
+.feature p { color: var(--muted); }
+
+.demo, .install {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 48px 24px;
+  text-align: center;
+}
+
+.demo-note { color: var(--muted); font-size: 0.9rem; }
+
+#src {
+  width: 100%;
+  padding: 12px;
+  border-radius: var(--radius);
+  border: 1px solid #2a2f3a;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 1rem;
+  margin: 16px 0;
+}
+
+#translate-btn {
+  padding: 10px 20px;
+  border-radius: var(--radius);
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+#status { margin-left: 12px; color: var(--muted); font-size: 0.9rem; }
+
+.output {
+  margin-top: 16px;
+  padding: 16px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  min-height: 24px;
+  text-align: left;
+}
+
+pre {
+  background: var(--surface);
+  padding: 16px;
+  border-radius: var(--radius);
+  overflow-x: auto;
+}
+
+footer {
+  text-align: center;
+  padding: 32px 24px;
+  color: var(--muted);
+  border-top: 1px solid #2a2f3a;
+}
+
+footer a { color: var(--accent); }
+
+@media (max-width: 640px) {
+  .features { grid-template-columns: 1fr; }
+}

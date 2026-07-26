@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Transdom — a translation engine that lives inside your own server</title>
+<meta name="description" content="Transdom is a self-hosted, open-source engine that translates any web page in real time." />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink: #12181C;
+    --surface: #1B232A;
+    --surface-raised: #212B33;
+    --rule: #2C3841;
+    --paper: #E8E6DE;
+    --muted: #8B95A1;
+    --brass: #C9A227;
+    --brass-dim: #8a701e;
+    --stamp: #4FA095;
+    --radius: 4px;
+    --serif: "Fraunces", Georgia, serif;
+    --sans: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    * { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+  }
+
+  body {
+    margin: 0;
+    background: var(--ink);
+    color: var(--paper);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.6;
+  }
+
+  a { color: inherit; }
+  a:focus-visible, button:focus-visible, textarea:focus-visible {
+    outline: 2px solid var(--brass);
+    outline-offset: 3px;
+  }
+
+  .wrap { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+
+  /* ---------- nav ---------- */
+  nav.top {
+    border-bottom: 1px solid var(--rule);
+  }
+  nav.top .wrap {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 20px;
+    padding-bottom: 20px;
+  }
+  .brand {
+    font-family: var(--mono);
+    font-size: 0.85rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    text-decoration: none;
+    color: var(--paper);
+  }
+  .navlinks { display: flex; gap: 24px; font-family: var(--mono); font-size: 0.8rem; }
+  .navlinks a { text-decoration: none; color: var(--muted); border-bottom: 1px solid transparent; }
+  .navlinks a:hover { color: var(--brass); border-color: var(--brass); }
+
+  /* ---------- hero / dictionary entry ---------- */
+  header.entry {
+    padding: 72px 0 48px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .headword {
+    font-family: var(--serif);
+    font-weight: 500;
+    font-size: clamp(2.6rem, 7vw, 4.2rem);
+    line-height: 1.02;
+    margin: 0 0 10px;
+    letter-spacing: -0.01em;
+  }
+  .phonetic {
+    font-family: var(--mono);
+    color: var(--brass);
+    font-size: 1rem;
+    display: block;
+    margin-bottom: 4px;
+  }
+  .pos {
+    font-family: var(--mono);
+    color: var(--muted);
+    font-size: 0.85rem;
+    font-style: italic;
+  }
+  .definition {
+    font-size: 1.15rem;
+    color: var(--paper);
+    max-width: 46ch;
+    margin: 20px 0 32px;
+  }
+  .definition .etym {
+    display: block;
+    color: var(--muted);
+    font-size: 0.95rem;
+    margin-top: 10px;
+  }
+  .cta-row { display: flex; gap: 14px; flex-wrap: wrap; }
+  .btn {
+    font-family: var(--mono);
+    font-size: 0.85rem;
+    padding: 12px 20px;
+    border-radius: var(--radius);
+    text-decoration: none;
+    border: 1px solid var(--rule);
+    color: var(--paper);
+    transition: border-color 0.15s ease, color 0.15s ease;
+  }
+  .btn:hover { border-color: var(--brass); color: var(--brass); }
+  .btn.solid {
+    background: var(--brass);
+    border-color: var(--brass);
+    color: var(--ink);
+    font-weight: 500;
+  }
+  .btn.solid:hover { background: var(--brass-dim); border-color: var(--brass-dim); color: var(--ink); }
+
+  /* ---------- senses (features) ---------- */
+  section.senses { padding: 56px 0; border-bottom: 1px solid var(--rule); }
+  .sense {
+    display: grid;
+    grid-template-columns: 56px 1fr;
+    gap: 20px;
+    padding: 22px 0;
+    border-top: 1px solid var(--rule);
+  }
+  .sense:first-child { border-top: none; }
+  .sense .mark {
+    font-family: var(--serif);
+    font-size: 1.4rem;
+    color: var(--brass);
+  }
+  .sense h3 {
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: 1.05rem;
+    margin: 0 0 6px;
+  }
+  .sense p { margin: 0; color: var(--muted); max-width: 52ch; }
+
+  /* ---------- demo: the entry translating itself ---------- */
+  section.demo { padding: 56px 0; border-bottom: 1px solid var(--rule); }
+  .demo-label {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .demo h2 {
+    font-family: var(--serif);
+    font-weight: 500;
+    font-size: 1.7rem;
+    margin: 0 0 8px;
+  }
+  .demo .sub { color: var(--muted); font-size: 0.95rem; margin-bottom: 24px; }
+
+  .ledger {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    padding: 24px;
+  }
+  .ledger textarea {
+    width: 100%;
+    background: var(--surface-raised);
+    color: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    padding: 14px;
+    font-family: var(--sans);
+    font-size: 1rem;
+    resize: vertical;
+  }
+  .ledger-controls {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-top: 14px;
+  }
+  .ledger button {
+    font-family: var(--mono);
+    font-size: 0.85rem;
+    background: var(--brass);
+    color: var(--ink);
+    border: none;
+    border-radius: var(--radius);
+    padding: 11px 20px;
+    cursor: pointer;
+    font-weight: 500;
+  }
+  .ledger button:hover { background: var(--brass-dim); }
+  .ledger button:disabled { opacity: 0.5; cursor: default; }
+  .demo-status {
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    color: var(--muted);
+  }
+
+  .result-row {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-top: 20px;
+    padding-top: 18px;
+    border-top: 1px dashed var(--rule);
+    min-height: 24px;
+  }
+  .stamp {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--stamp);
+    border: 1px solid var(--stamp);
+    border-radius: 2px;
+    padding: 2px 6px;
+    transform: rotate(-3deg);
+    opacity: 0;
+    transition: opacity 0.25s ease;
+  }
+  .stamp.show { opacity: 1; }
+  .result-text { font-size: 1.05rem; }
+
+  .demo-note {
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    color: var(--muted);
+    margin-top: 16px;
+    line-height: 1.6;
+  }
+
+  /* ---------- install ---------- */
+  section.install { padding: 56px 0; border-bottom: 1px solid var(--rule); }
+  section.install h2 {
+    font-family: var(--serif);
+    font-weight: 500;
+    font-size: 1.5rem;
+    margin: 0 0 16px;
+  }
+  pre.code {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+    font-family: var(--mono);
+    font-size: 0.9rem;
+    color: var(--brass);
+    overflow-x: auto;
+    margin: 0 0 16px;
+  }
+  section.install p { color: var(--muted); font-size: 0.95rem; }
+
+  /* ---------- footer ---------- */
+  footer {
+    padding: 32px 0 56px;
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    color: var(--muted);
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  footer a { text-decoration: none; color: var(--muted); border-bottom: 1px solid transparent; }
+  footer a:hover { color: var(--brass); border-color: var(--brass); }
+
+  @media (max-width: 560px) {
+    .sense { grid-template-columns: 32px 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="top">
+  <div class="wrap">
+    <a class="brand" href="#">Transdom</a>
+    <div class="navlinks">
+      <a href="https://github.com/hjdesigner/transdom">GitHub</a>
+      <a href="https://www.npmjs.com/package/transdom">npm</a>
+      <a href="#demo">Demo</a>
+    </div>
+  </div>
+</nav>
+
+<header class="entry">
+  <div class="wrap">
+    <span class="phonetic">/trænzˈdɒm/</span>
+    <h1 class="headword">Transdom</h1>
+    <span class="pos">noun — self-hosted software</span>
+    <p class="definition">
+      A translation engine that lives inside your own server, not someone
+      else's API. It reads a web page's rendered text and rewrites it in
+      place, in real time, as the page changes.
+      <span class="etym">from <em>trans-</em> (across) + <em>DOM</em> (Document Object Model)</span>
+    </p>
+    <div class="cta-row">
+      <a class="btn solid" href="https://github.com/hjdesigner/transdom">View on GitHub</a>
+      <a class="btn" href="#demo">See it translate →</a>
+    </div>
+  </div>
+</header>
+
+<section class="senses">
+  <div class="wrap">
+    <div class="sense">
+      <span class="mark">§1</span>
+      <div>
+        <h3>self-hosted</h3>
+        <p>You run the server. You own the data and the cost. No API keys, no per-word billing, no vendor to depend on.</p>
+      </div>
+    </div>
+    <div class="sense">
+      <span class="mark">§2</span>
+      <div>
+        <h3>real-time</h3>
+        <p>A page rewritten by a framework, a modal that opens, a list that loads more — Transdom notices and translates it without a second request from you.</p>
+      </div>
+    </div>
+    <div class="sense">
+      <span class="mark">§3</span>
+      <div>
+        <h3>open source</h3>
+        <p>MIT licensed, built in the open. Fork it, read it, extend it, or run it exactly as it ships.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="demo" id="demo">
+  <div class="wrap">
+    <span class="demo-label">Live entry</span>
+    <h2>Watch a sentence get translated</h2>
+    <p class="sub">This runs entirely in your browser — no server, no account, nothing sent anywhere.</p>
+
+    <div class="ledger">
+      <textarea id="src" rows="3">The user clicked the button and the page updated instantly.</textarea>
+      <div class="ledger-controls">
+        <button id="translate-btn">Translate to Spanish</button>
+        <span class="demo-status" id="status"></span>
+      </div>
+      <div class="result-row">
+        <span class="stamp" id="stamp">translated</span>
+        <span class="result-text" id="out"></span>
+      </div>
+    </div>
+
+    <p class="demo-note">
+      This demo uses a browser-compatible model (English → Spanish) so it can
+      run without a server at all. The self-hosted Transdom server uses a
+      different, higher-quality translation engine and supports English →
+      Portuguese, German, French, Italian, and more.
+    </p>
+  </div>
+</section>
+
+<section class="install">
+  <div class="wrap">
+    <h2>Get started</h2>
+    <p class="sub" style="margin-bottom:20px;">
+      Transdom has two parts, and both are required — the client library
+      has nothing to translate without a server to call.
+    </p>
+
+    <div class="sense" style="grid-template-columns:32px 1fr; border-top:none; padding-top:0;">
+      <span class="mark" style="font-size:1.1rem;">1</span>
+      <div>
+        <h3>Run the server</h3>
+        <p style="margin-bottom:10px;">A Python service that does the actual translating. Self-hosted, via Docker:</p>
+        <pre class="code" style="margin-bottom:0;">git clone https://github.com/hjdesigner/transdom
+cd transdom
+docker compose up --build</pre>
+      </div>
+    </div>
+
+    <div class="sense" style="grid-template-columns:32px 1fr;">
+      <span class="mark" style="font-size:1.1rem;">2</span>
+      <div>
+        <h3>Add the client to your page</h3>
+        <p style="margin-bottom:10px;">Once the server is running, install the library and point it at your server:</p>
+        <pre class="code">npm install transdom</pre>
+        <pre class="code" style="margin-top:10px;">import { Transdom } from "transdom";
+
+const transdom = new Transdom({
+  apiUrl: "http://your-server:8000/translate/batch",
+  sourceLang: "en",
+  targetLang: "pt",
+});
+
+transdom.startAutoTranslate();</pre>
+      </div>
+    </div>
+
+    <p style="margin-top:8px;">Full setup, configuration, and self-hosting details are in the <a href="https://github.com/hjdesigner/transdom" style="color:var(--brass)">README on GitHub</a>.</p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap" style="display:flex; justify-content:space-between; width:100%; flex-wrap:wrap; gap:10px;">
+    <span>MIT License</span>
+    <span>
+      <a href="https://github.com/hjdesigner/transdom">GitHub</a> ·
+      <a href="https://www.npmjs.com/package/transdom">npm</a>
+    </span>
+  </div>
+</footer>
+
+<script type="module">
+  const btn = document.getElementById("translate-btn");
+  const src = document.getElementById("src");
+  const out = document.getElementById("out");
+  const stamp = document.getElementById("stamp");
+  const status = document.getElementById("status");
+
+  let translator = null;
+
+  async function loadModel() {
+    status.textContent = "loading model (first time only)…";
+    const { pipeline } = await import("https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2");
+    translator = await pipeline("translation", "Xenova/opus-mt-en-es");
+    status.textContent = "";
+  }
+
+  btn.addEventListener("click", async () => {
+    btn.disabled = true;
+    stamp.classList.remove("show");
+    try {
+      if (!translator) await loadModel();
+      status.textContent = "translating…";
+      const result = await translator(src.value);
+      out.textContent = result[0].translation_text;
+      status.textContent = "";
+      stamp.classList.add("show");
+    } catch (e) {
+      out.textContent = "Error: " + e.message;
+      status.textContent = "";
+    }
+    btn.disabled = false;
+  });
+</script>
+
+</body>
+</html>

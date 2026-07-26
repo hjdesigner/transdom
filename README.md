@@ -225,6 +225,21 @@ difference on test sentences. Converted models are cached in `ct2_models/`
 and generated automatically on first use per language pair — no manual setup
 required.
 
+## Resource requirements
+
+Measured with Docker (`docker stats`) on a single enabled language pair:
+
+| State | RAM usage |
+|---|---|
+| Server idle (no translation yet) | ~378 MB |
+| After one translation (model loaded) | ~710 MB |
+
+The baseline (~378 MB) comes from Python + PyTorch + the embedding model
+used for semantic caching — this is a fixed cost regardless of how many
+language pairs are enabled. As a result, hosting tiers below ~1 GB of RAM
+(e.g. most providers' free tiers) are not viable; budget for at least a
+1–2 GB instance in production.
+
 ## License
 
 MIT — see [LICENSE](LICENSE) for details.
