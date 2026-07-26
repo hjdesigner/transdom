@@ -9,6 +9,7 @@ Transdom has two pieces:
 ## Contents
 
 - [Quick start](#quick-start)
+- [Running tests](#running-tests)
 - [Supported languages](#supported-languages)
 - [How it works](#how-it-works)
 - [Configuration](#configuration)
@@ -17,6 +18,7 @@ Transdom has two pieces:
 - [Semantic caching](#semantic-caching)
 - [Translation engine](#translation-engine)
 - [Deployment & resource requirements](#deployment--resource-requirements)
+- [Security considerations](#security-considerations)
 - [License](#license)
 
 ## Quick start
@@ -160,6 +162,7 @@ Copy `.env.example` to `.env` (inside `server/`) and adjust as needed:
 - **ALLOWED_ORIGINS** — comma-separated list of domains allowed to call this API from a browser (CORS). Restrict this to your own site's domain(s) in production; the default only allows `localhost:5500`, used by the included test page.
 - **RATE_LIMIT** — max requests per IP address (e.g. `30/minute`, `100/hour`), enforced with [slowapi](https://github.com/laurentS/slowapi).
 - **MAX_TEXTS_PER_BATCH** / **MAX_TEXT_LENGTH** — reject oversized requests (too many texts, or texts that are too long) before they reach the translation engine, protecting the server from abuse or accidental misuse.
+- **HF_TOKEN** — optional Hugging Face access token (read-only is enough). Not required, but avoids hitting anonymous rate limits when downloading translation models. Get one at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens).
 
 If no `.env` file is present, the server falls back to safe defaults, so it still runs out of the box for local testing.
 
@@ -237,7 +240,24 @@ docker compose up --build -d
 
 This baseline comes from Python + CTranslate2 + transformers overhead — a mostly fixed cost regardless of how many language pairs are enabled. As a result, hosting tiers below ~1GB of RAM (most providers' free tiers) are not viable. Budget for at least a 1–2GB instance in production.
 
-- **HF_TOKEN** — optional Hugging Face access token (read-only is enough). Not required, but avoids hitting anonymous rate limits when downloading translation models. Get one at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens).
+## Security considerations
+
+Transdom includes some protections out of the box, but self-hosting means
+you're responsible for the rest. Being upfront about both:
+
+**Covered:**
+- **Per-IP rate limiting** (`RATE_LIMIT` in `.env`) — throttles a single IP sending too many requests too fast.
+- **Payload limits** (`MAX_TEXT_LENGTH`, `MAX_TEXTS_PER_BATCH`) — rejects oversized requests before they reach the translation engine.
+- **CORS** (`ALLOWED_ORIGINS`) — restricts which domains can call the API *from a browser*.
+
+**Not covered — these are the operator's responsibility:**
+- **Distributed abuse.** Per-IP rate limiting doesn't stop many different IPs hitting the server at once. If this matters for your deployment, put a proxy/CDN (e.g. Cloudflare, even on a free plan) in front of the server.
+- **CORS is not an access control.** It only restricts browser-based JavaScript. A direct HTTP request (`curl`, a script, another server) ignores CORS entirely and reaches the API the same as a browser would.
+- **Rate limiting counts requests, not cost.** A client stays "within limits" while still sending the maximum allowed batch size on every request — each of which runs real AI inference. The current limits don't distinguish cheap requests from expensive ones.
+- **No authentication.** Anyone who knows the server's URL can use it. Fine for a personal site calling its own server; add an API key or auth layer if that's not your case.
+- **No HTTPS built in.** The server speaks plain HTTP. Put it behind a reverse proxy (Nginx, Caddy, Traefik) handling TLS before exposing it publicly.
+
+None of this is unusual for a self-hosted tool — it's the same shape of trade-off as running any other open-source server yourself. The goal here is to be explicit about where the line sits, rather than leave it implicit.
 
 ## License
 
