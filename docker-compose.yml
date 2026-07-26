@@ -3,6 +3,8 @@ services:
     build: ./server
     ports:
       - "8000:8000"
+    env_file:
+    - ./server/.env
     volumes:
       - model_cache:/root/.cache/huggingface
 

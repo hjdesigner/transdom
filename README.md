@@ -226,6 +226,8 @@ docker compose up --build -d
 
 This baseline comes from Python + CTranslate2 + transformers overhead — a mostly fixed cost regardless of how many language pairs are enabled. As a result, hosting tiers below ~1GB of RAM (most providers' free tiers) are not viable. Budget for at least a 1–2GB instance in production.
 
+- **HF_TOKEN** — optional Hugging Face access token (read-only is enough). Not required, but avoids hitting anonymous rate limits when downloading translation models. Get one at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens).
+
 ## License
 
 MIT — see [LICENSE](LICENSE) for details.
