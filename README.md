@@ -113,6 +113,17 @@ function App() {
 }
 ```
 
+## Running tests
+
+```bash
+cd server
+pip install pytest httpx
+python -m pytest test_api.py -v
+```
+
+Tests mock the translation model and tokenizer (no downloads, no GPU needed)
+and cover glossary matching, LRU eviction, translation caching, and request validation.
+
 ## Supported languages
 
 | Source | Target |
