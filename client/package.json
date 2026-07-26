@@ -1,16 +1,19 @@
 {
   "name": "transdom",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Real-time, self-hosted AI translation for any web page.",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     },
     "./react": {
+      "types": "./dist/react.d.ts",
       "import": "./dist/react.js",
       "require": "./dist/react.cjs"
     }
@@ -19,7 +22,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsup src/index.js src/react.js --format esm,cjs",
+    "build": "tsup src/index.js src/react.js --format esm,cjs && tsc",
     "prepublishOnly": "npm run build"
   },
   "peerDependencies": {
