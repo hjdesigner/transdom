@@ -6,6 +6,19 @@ Transdom has two pieces:
 - A **translation server** (Python + FastAPI) you run yourself — like Strapi, you host it, you own the data and the cost.
 - A **client library** (`transdom.js`) you drop into any web page to translate its content in real time.
 
+## Contents
+
+- [Quick start](#quick-start)
+- [Supported languages](#supported-languages)
+- [How it works](#how-it-works)
+- [Configuration](#configuration)
+- [Glossary](#glossary)
+- [Memory management](#memory-management)
+- [Semantic caching](#semantic-caching)
+- [Translation engine](#translation-engine)
+- [Deployment & resource requirements](#deployment--resource-requirements)
+- [License](#license)
+
 ## Quick start
 
 ### 1. Run the server
@@ -40,6 +53,8 @@ Open `http://localhost:5500/test.html` in your browser.
 
 ### 3. Add Transdom to your own page
 
+The server from step 1 must be running — the client library has nothing to translate without it.
+
 ```bash
 npm install transdom
 ```
@@ -56,8 +71,10 @@ const transdom = new Transdom({
 transdom.startAutoTranslate();
 ```
 
-For React:
-```js
+**For React:**
+
+```jsx
+import { useRef } from "react";
 import { useTransdom } from "transdom/react";
 
 function App() {
@@ -65,7 +82,7 @@ function App() {
 
   const { status, error, translate, stop } = useTransdom(
     {
-      apiUrl: "http://localhost:8000/translate/batch",
+      apiUrl: "http://your-server:8000/translate/batch",
       sourceLang: "en",
       targetLang: "pt",
     },
@@ -80,9 +97,9 @@ function App() {
         <p>This is a simple paragraph used to test automatic translation.</p>
       </div>
 
-      <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 16 }}>
-        {/* Everything below lives OUTSIDE the translatable area,
-            so Transdom never sees (or reacts to) its own status UI */}
+      {/* Everything below lives OUTSIDE the translatable area,
+          so Transdom never sees (or reacts to) its own status UI */}
+      <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
         <button onClick={translate} disabled={status === "loading"}>
           {status === "loading" ? "Translating..." : "Translate Page"}
         </button>
@@ -106,25 +123,17 @@ function App() {
 
 ### Adding a new language pair
 
-1. Find the model for your language pair on the
-   [Helsinki-NLP OPUS-MT models page](https://huggingface.co/Helsinki-NLP).
-   Search for `opus-mt-{source}-{target}` (e.g. `opus-mt-en-ja` for
-   English → Japanese). Not every pair exists — check the model actually
-   loads before relying on it.
-2. Open the model's page and check its README for a "language codes" or
-   "valid target labels" section. Some models (usually named `tc-big` or
-   covering multiple related languages) require a `>>xxx<<` tag prefix
-   to pick the exact target — like `Helsinki-NLP/opus-mt-tc-big-en-pt`
-   does with `>>por<<`/`>>pob<<`. Most bilingual models (`opus-mt-en-es`,
-   for example) don't need one — use `null`/`None` in that case.
+1. Find the model for your language pair on the [Helsinki-NLP OPUS-MT models page](https://huggingface.co/Helsinki-NLP). Search for `opus-mt-{source}-{target}` (e.g. `opus-mt-en-ja` for English → Japanese). Not every pair exists — check the model actually loads before relying on it.
+2. Open the model's page and check its README for a "language codes" or "valid target labels" section. Some models (usually named `tc-big` or covering multiple related languages) require a `>>xxx<<` tag prefix to pick the exact target — like `Helsinki-NLP/opus-mt-tc-big-en-pt` does with `>>por<<`/`>>pob<<`. Most bilingual models (`opus-mt-en-es`, for example) don't need one — use `null`/`None` in that case.
 3. Add an entry to `LANGUAGE_MODELS` in `server/main.py`:
 
 ```python
 ("en", "ja"): {"model_name": "Helsinki-NLP/opus-mt-en-ja", "target_tag": None},
 ```
 
-4. Restart the server. The model downloads and converts to CTranslate2
-   automatically the first time that pair is used — no other setup needed.
+4. Restart the server. The model downloads and converts to CTranslate2 automatically the first time that pair is used — no other setup needed.
+
+Contributions adding new verified language pairs are welcome via pull request.
 
 ## How it works
 
@@ -145,10 +154,7 @@ If no `.env` file is present, the server falls back to safe defaults, so it stil
 
 ## Glossary
 
-Create a `glossary.json` file inside `server/` to override automatic
-translation for specific terms — useful for brand names, technical terms,
-or UI strings where you want an exact, consistent translation instead of
-whatever the AI model generates.
+Create a `glossary.json` file inside `server/` to override automatic translation for specific terms — useful for brand names, technical terms, or UI strings where you want an exact, consistent translation instead of whatever the AI model generates.
 
 ```json
 {
@@ -162,19 +168,10 @@ whatever the AI model generates.
 }
 ```
 
-- **do_not_translate** — terms (case-sensitive, whole-word match) that are
-  never translated, whether they're the entire text or appear inside a
-  larger sentence.
-- **custom_translations** — per language-pair overrides for specific terms,
-  applied the same way: whole text or inside a sentence.
+- **do_not_translate** — terms (case-sensitive, whole-word match) that are never translated, whether they're the entire text or appear inside a larger sentence.
+- **custom_translations** — per language-pair overrides for specific terms, applied the same way: whole text or inside a sentence.
 
-Glossary rules take priority over caching and the AI model. When a term
-appears inside a larger sentence, it's temporarily replaced with a
-name-like placeholder before translation (name-like tokens survive
-translation far more reliably than symbols or raw variable names — this
-was verified empirically, see the project's development history) and
-restored afterward. If `glossary.json` doesn't exist, the server runs
-normally with no glossary rules.
+Glossary rules take priority over caching and the AI model. When a term appears inside a larger sentence, it's temporarily replaced with a name-like placeholder before translation (name-like tokens survive translation far more reliably than symbols or raw variable names) and restored afterward. If `glossary.json` doesn't exist, the server runs normally with no glossary rules.
 
 ## Memory management
 
@@ -183,26 +180,17 @@ Translation models are loaded into RAM on first use per language pair, and cache
 These limits are configurable in `server/main.py`:
 
 ```python
-MAX_LOADED_MODELS = 3           # max translation models kept in RAM at once
+MAX_LOADED_MODELS = 3              # max translation models kept in RAM at once
 MAX_TRANSLATION_CACHE_SIZE = 5000  # max cached translated strings
 ```
 
-Tune `MAX_LOADED_MODELS` based on available RAM — each model uses roughly 300MB–2GB depending on the language pair.
+Tune `MAX_LOADED_MODELS` based on available RAM — each model uses roughly 200–400MB after CTranslate2/int8 quantization.
 
 ## Semantic caching
 
-Beyond exact-match caching, Transdom also caches by **meaning**. Each translated
-text is converted into a vector embedding (using `all-MiniLM-L6-v2`, from the
-`sentence-transformers` library), and future requests are compared against
-cached embeddings using cosine similarity. If a new text is semantically close
-enough to something already translated — even with different wording or word
-order — the cached translation is reused instead of running the translation
-model again.
+Beyond exact-match caching, Transdom also caches by **meaning**. Each translated text is converted into a vector embedding (using `all-MiniLM-L6-v2`, from the `sentence-transformers` library), and future requests are compared against cached embeddings using cosine similarity. If a new text is semantically close enough to something already translated — even with different wording or word order — the cached translation is reused instead of running the translation model again.
 
-Example: `"You have successfully logged in"` and `"You have logged in
-successfully"` are different strings, but nearly identical in meaning
-(similarity score ≈ 0.99). Semantic caching catches this; exact-match caching
-would not.
+Example: `"You have successfully logged in"` and `"You have logged in successfully"` are different strings, but nearly identical in meaning (similarity score ≈ 0.99). Semantic caching catches this; exact-match caching would not.
 
 The similarity threshold is configurable in `server/main.py`:
 
@@ -211,34 +199,32 @@ SIMILARITY_THRESHOLD = 0.92  # 0 to 1 — how close two texts must be in meaning
                               # to reuse a cached translation
 ```
 
-Lower values reuse more aggressively (faster, but risk merging texts that
-don't actually mean the same thing). Higher values are safer but closer to
-exact-match caching. `0.92` was chosen by testing real examples rather than
-picked arbitrarily — tune it based on the kind of text your site uses.
+Lower values reuse more aggressively (faster, but risk merging texts that don't actually mean the same thing). Higher values are safer but closer to exact-match caching. `0.92` was chosen by testing real examples rather than picked arbitrarily — tune it based on the kind of text your site uses.
+
+This feature can be disabled with `ENABLE_SEMANTIC_CACHE=false` in `.env` if you'd rather skip it. **Note:** this was measured to save only ~6% of baseline memory usage (see below) — the bulk of the server's baseline comes from elsewhere (CTranslate2 and transformers overhead), not from this feature. Disabling it is not an effective way to reduce memory footprint; it exists purely as an optional trade-off between cache quality and a small amount of RAM.
 
 ## Translation engine
 
-Translation models run on **CTranslate2** with **int8 quantization**, instead
-of plain PyTorch. This was measured (not assumed) to give a ~6x speedup and
-roughly halve the model's disk/memory footprint, with no observable quality
-difference on test sentences. Converted models are cached in `ct2_models/`
-and generated automatically on first use per language pair — no manual setup
-required.
+Translation models run on **CTranslate2** with **int8 quantization**, instead of plain PyTorch. This was measured (not assumed) to give a ~6x speedup and roughly halve the model's disk/memory footprint, with no observable quality difference on test sentences. Converted models are cached in `ct2_models/` and generated automatically on first use per language pair — no manual setup required.
 
-## Resource requirements
+## Deployment & resource requirements
 
-Measured with Docker (`docker stats`) on a single enabled language pair:
+Transdom runs anywhere Docker does — there's no dependency on a specific hosting provider. On any VPS or cloud platform with Docker installed:
+
+```bash
+git clone https://github.com/hjdesigner/transdom
+cd transdom
+docker compose up --build -d
+```
+
+**Measured RAM usage** (via `docker stats`, one enabled language pair):
 
 | State | RAM usage |
 |---|---|
 | Server idle (no translation yet) | ~378 MB |
 | After one translation (model loaded) | ~710 MB |
 
-The baseline (~378 MB) comes from Python + PyTorch + the embedding model
-used for semantic caching — this is a fixed cost regardless of how many
-language pairs are enabled. As a result, hosting tiers below ~1 GB of RAM
-(e.g. most providers' free tiers) are not viable; budget for at least a
-1–2 GB instance in production.
+This baseline comes from Python + CTranslate2 + transformers overhead — a mostly fixed cost regardless of how many language pairs are enabled. As a result, hosting tiers below ~1GB of RAM (most providers' free tiers) are not viable. Budget for at least a 1–2GB instance in production.
 
 ## License
 
